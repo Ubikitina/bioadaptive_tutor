@@ -1,0 +1,7 @@
+kafka-python==2.0.2
+neurokit2==0.2.7
+pandas==2.2.0
+numpy==1.26.3
+scipy==1.11.4
+requests==2.31.0
+redis==5.0.1

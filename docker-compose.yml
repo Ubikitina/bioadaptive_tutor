@@ -1,0 +1,131 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.7
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - tfm-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.7
+    hostname: kafka
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Configuración para single node
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    networks:
+          - tfm-network
+  
+  producer:
+    build:
+      context: .
+      dockerfile: producer/Dockerfile
+    container_name: producer
+    depends_on:
+      - kafka
+    volumes:
+      - ./data:/app/data    # Montamos la carpeta data para que el script pueda leer el .pkl
+    networks:
+      - tfm-network
+
+  processor-ecg:
+    build:
+      context: .
+      dockerfile: processor_ecg/Dockerfile
+    container_name: processor-ecg
+    depends_on:
+      - kafka
+      - redis
+    networks:
+      - tfm-network
+
+  processor-eda:
+    build:
+      context: .
+      dockerfile: processor_eda/Dockerfile
+    container_name: processor-eda
+    depends_on:
+      - kafka
+      - redis
+    networks:
+      - tfm-network
+
+  processor-resp:
+    build:
+      context: .
+      dockerfile: processor_resp/Dockerfile
+    container_name: processor-resp
+    depends_on:
+      - kafka
+      - redis
+    networks:
+      - tfm-network
+
+  processor-temp:
+    build:
+      context: .
+      dockerfile: processor_temp/Dockerfile
+    container_name: processor-temp
+    depends_on:
+      - kafka
+      - redis
+    networks:
+      - tfm-network
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    container_name: orchestrator
+    depends_on:
+      - kafka
+      - redis
+      - processor-ecg
+      - processor-eda
+      - processor-resp
+      - processor-temp
+    networks:
+      - tfm-network
+  
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - tfm-network
+    
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp_server/Dockerfile
+    container_name: mcp-server
+    depends_on:
+      - redis
+    ports:
+      - "8000:8000"  # Exponemos el puerto para que el Cliente LLM (local) pueda entrar
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    networks:
+      - tfm-network
+
+networks:
+  tfm-network:
+    driver: bridge
